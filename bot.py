@@ -301,7 +301,7 @@ async def process_manager_action(callback: CallbackQuery, callback_data: Manager
         await callback.message.edit_caption(caption=new_caption, reply_markup=kb)
         
         try:
-            await bot.send_message(user_id, f"🎉 Ваша бронь на **Стол {table_id}** ({date_str}) успешно подтверждена! Ждем вас в нашем баре KVARTAL 29, по адресу Архангельск, Троицкий проспект, 122.")
+            await bot.send_message(user_id, f"🎉 Ваша бронь на **Стол {table_id}** ({date_str}) успешно подтверждена! Ждем вас в нашем баре KVARTAL 29, по адресу Архангельск, Троицкий проспект, 122. По всем вопросам @waozixfu")
         except Exception as e:
             logging.error(f"Не удалось отправить сообщение клиенту {user_id}: {e}")
             
@@ -323,7 +323,7 @@ async def process_manager_action(callback: CallbackQuery, callback_data: Manager
         await callback.message.edit_caption(caption=new_caption, reply_markup=None)
         
         try:
-            await bot.send_message(user_id, f"⚠️ Ваша бронь на **Стол {table_id}** ({date_str}) была отменена менеджером. Если у вас есть вопросы, пожалуйста, свяжитесь с поддержкой.")
+            await bot.send_message(user_id, f"⚠️ Ваша бронь на **Стол {table_id}** ({date_str}) была отменена менеджером. Если у вас есть вопросы, пожалуйста, свяжитесь с поддержкой @waozixfu.")
         except Exception as e:
             logging.error(f"Не удалось отправить сообщение клиенту {user_id}: {e}")
 

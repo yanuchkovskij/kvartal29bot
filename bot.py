@@ -23,24 +23,25 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # ==================== КОНСТАНТЫ И НАСТРОЙКИ ====================
 
-
 # Берем токен из поля "Bot Token" в панели BotHost
 BOT_TOKEN = os.getenv("BOT_TOKEN") 
 # Берем ID чата из поля "Переменные окружения", если нет — используем стандартный
 MANAGER_CHAT_ID = int(os.getenv("MANAGER_CHAT_ID", "-1003828753369"))
 
-# Настройки столов (10 столов с новыми ценами)
+# Настройки столов (11 столов с категориями, ценами и видео)
+# Если видео лежат в папке, укажите путь, например: "videos/standart.mp4"
 TABLES = {
-    "1": {"name": "Стол 1", "price": 500},
-    "2": {"name": "Стол 2", "price": 2000},
-    "3": {"name": "Стол 3", "price": 500},
-    "4": {"name": "Стол 4", "price": 500},
-    "5": {"name": "Стол 5", "price": 500},
-    "6": {"name": "Стол 6", "price": 500},
-    "7": {"name": "Стол 7", "price": 500},
-    "8": {"name": "Стол 8", "price": 500},
-    "9": {"name": "Стол 9", "price": 2000},
-    "10": {"name": "Стол 10", "price": 2000},
+    "1": {"name": "Стол 1", "category": "Стандарт", "price": 500, "video": "standart.mp4", "available": True},
+    "2": {"name": "Стол 2", "category": "Комфорт", "price": 2000, "video": "komfort.mp4", "available": True},
+    "3": {"name": "Стол 3", "category": "Стандарт", "price": 500, "video": "standart.mp4", "available": True},
+    "4": {"name": "Стол 4", "category": "Стандарт", "price": 500, "video": "standart.mp4", "available": True},
+    "5": {"name": "Стол 5", "category": "Стандарт", "price": 500, "video": "standart.mp4", "available": True},
+    "6": {"name": "Стол 6", "category": "Стандарт", "price": 500, "video": "standart.mp4", "available": True},
+    "7": {"name": "Стол 7", "category": "Стандарт", "price": 500, "video": "standart.mp4", "available": True},
+    "8": {"name": "Стол 8", "category": "Стандарт", "price": 500, "video": "standart.mp4", "available": True},
+    "9": {"name": "Стол 9", "category": "Комфорт +", "price": 2000, "video": "komfortplus.mp4", "available": True},
+    "10": {"name": "Стол 10", "category": "Комфорт +", "price": 2000, "video": "komfortplus.mp4", "available": True},
+    "11": {"name": "Стол 11", "category": "Бизнес", "price": 0, "video": "biznes.mp4", "available": False}, # Недоступен для брони
 }
 
 router = Router()
@@ -136,27 +137,63 @@ def get_reservation_dates() -> tuple[str, str]:
     
     return friday.strftime("%d.%m.%Y"), saturday.strftime("%d.%m.%Y")
 
+# ==================== ХЭНДЛЕРЫ КЛИЕНТА (Навигация) ====================
 
-# ==================== ХЭНДЛЕРЫ КЛИЕНТА ====================
-@router.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext):
+async def send_start_message(message_or_callback, state: FSMContext, edit=False):
+    """Отправляет или редактирует стартовое сообщение (Главное меню)."""
     await state.clear()
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📅 Забронировать стол", callback_data="start_booking")]])
-    await message.answer(
-        f"Привет, {message.from_user.first_name}! Это бот для брони в баре KVARTAL 29.\n\n"
-        "Мы работаем по Пятницам и Субботам. Нажмите кнопку ниже, чтобы забронировать столик.",
-        reply_markup=kb
+    text = (
+        f"Привет, {message_or_callback.from_user.first_name}! Это бот для брони в баре KVARTAL 29.\n\n"
+        "Мы работаем по Пятницам и Субботам. Нажмите кнопку ниже, чтобы забронировать столик."
     )
+    if edit:
+        await message_or_callback.message.edit_text(text, reply_markup=kb)
+    else:
+        await message_or_callback.answer(text, reply_markup=kb)
+
+async def send_dates_message(message_or_callback, is_photo=False):
+    """Отправляет меню выбора дат."""
+    friday_str, saturday_str = get_reservation_dates()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"Пятница ({friday_str})", callback_data=DateCB(value=friday_str).pack())],
+        [InlineKeyboardButton(text=f"Суббота ({saturday_str})", callback_data=DateCB(value=saturday_str).pack())],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_start")]
+    ])
+    text = "Выберите дату бронирования:"
+    
+    if is_photo:
+        # Если мы возвращаемся с этапа выбора стола (где было фото плана зала)
+        await message_or_callback.message.delete()
+        await message_or_callback.message.answer(text, reply_markup=kb)
+    else:
+        # Если мы просто идем вперед со стартового сообщения (редактируем текст)
+        await message_or_callback.message.edit_text(text, reply_markup=kb)
+
+
+# ==================== ХЭНДЛЕРЫ КЛИЕНТА ====================
+
+@router.message(CommandStart())
+async def cmd_start(message: Message, state: FSMContext):
+    await send_start_message(message, state, edit=False)
+
+@router.callback_query(F.data == "back_to_start")
+async def process_back_to_start(callback: CallbackQuery, state: FSMContext):
+    """Кнопка 'Назад' на этапе выбора даты -> Возврат в Главное меню."""
+    await send_start_message(callback, state, edit=True)
+    await callback.answer()
 
 @router.callback_query(F.data == "start_booking")
 async def process_start_booking(callback: CallbackQuery):
-    friday_str, saturday_str = get_reservation_dates()
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"Пятница ({friday_str})", callback_data=DateCB(value=friday_str).pack())],[InlineKeyboardButton(text=f"Суббота ({saturday_str})", callback_data=DateCB(value=saturday_str).pack())]
-    ])
-    
-    await callback.message.edit_text("Выберите дату бронирования:", reply_markup=kb)
+    await send_dates_message(callback, is_photo=False)
     await callback.answer()
+
+@router.callback_query(F.data == "back_to_dates")
+async def process_back_to_dates(callback: CallbackQuery):
+    """Кнопка 'Назад' на этапе плана зала -> Возврат к выбору даты."""
+    await send_dates_message(callback, is_photo=True)
+    await callback.answer()
+
 
 @router.callback_query(DateCB.filter())
 async def process_date_selection(callback: CallbackQuery, callback_data: DateCB, state: FSMContext):
@@ -168,18 +205,25 @@ async def process_date_selection(callback: CallbackQuery, callback_data: DateCB,
     # Динамически собираем клавиатуру
     builder = InlineKeyboardBuilder()
     
-    for i in range(1, 11):
+    for i in range(1, 12): # Теперь 11 столов
         t_id = str(i)
-        if t_id in booked_tables:
+        table_info = TABLES[t_id]
+        
+        if not table_info["available"]:
+            # Стол недоступен для брони (Бизнес-стол)
+            builder.button(text=f"Стол {i} ({table_info['category']}) 🚫", callback_data="table_unavailable")
+        elif t_id in booked_tables:
             # Стол занят
             builder.button(text=f"Стол {i} - Занят 🚫", callback_data="table_booked")
         else:
             # Стол свободен
-            price = TABLES[t_id]['price']
+            price = table_info['price']
             builder.button(text=f"Стол {i} - {price} руб.", callback_data=TableCB(type=t_id).pack())
             
     # Устанавливаем по 2 кнопки в ряд
     builder.adjust(2)
+    # Добавляем кнопку "Назад" отдельной строкой
+    builder.row(InlineKeyboardButton(text="⬅️ Назад к выбору даты", callback_data="back_to_dates"))
     
     # Удаляем старое текстовое сообщение, чтобы отправить фото с кнопками
     await callback.message.delete()
@@ -188,7 +232,7 @@ async def process_date_selection(callback: CallbackQuery, callback_data: DateCB,
     photo = FSInputFile("floor_plan.jpg")
     await callback.message.answer_photo(
         photo=photo,
-        caption=f"Вы выбрали **{callback_data.value}**.\nИзучите план зала и выберите свободный стол ниже:",
+        caption=f"Вы выбрали <b>{callback_data.value}</b>.\nИзучите план зала и выберите свободный стол ниже:",
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -198,6 +242,11 @@ async def process_booked_table(callback: CallbackQuery):
     """Хэндлер для обработки клика по занятому столу."""
     await callback.answer("Этот стол уже забронирован на эту дату. Пожалуйста, выберите другой.", show_alert=True)
 
+@router.callback_query(F.data == "table_unavailable")
+async def process_unavailable_table(callback: CallbackQuery):
+    """Хэндлер для обработки клика по недоступному (Бизнес) столу."""
+    await callback.answer("Этот стол (Категория 'Бизнес') временно недоступен для бронирования через бота.", show_alert=True)
+
 @router.callback_query(TableCB.filter())
 async def process_table_selection(callback: CallbackQuery, callback_data: TableCB, state: FSMContext):
     await state.update_data(selected_table=callback_data.type)
@@ -205,26 +254,37 @@ async def process_table_selection(callback: CallbackQuery, callback_data: TableC
     
     date_str = data['selected_date']
     table_id = callback_data.type
-    price = TABLES[table_id]['price']
+    table_info = TABLES[table_id]
+    price = table_info['price']
+    category = table_info['category']
+    video_path = table_info['video']
     
     text = (
-        f"Вы выбрали Стол {table_id} на {date_str}.\n"
-        f"Для того чтобы забронировать столики надо будет внести депозит {price} руб на 89115952123 - Ozon банк, его вы сможете потратить в течении вечера.\n\n"
+        f"Вы выбрали <b>Стол {table_id}</b> (Категория: <b>{category}</b>) на <b>{date_str}</b>.\n"
+        f"Для того чтобы забронировать столик, надо будет внести депозит <b>{price} руб.</b> на 89115952123 - Ozon банк, его вы сможете потратить в течении вечера.\n\n"
         "И у нас есть несколько правил:\n"
         "• Все обязательно должны при себе иметь оригинал паспорта\n"
         "• Придти вовремя (если задерживаетесь, то предупредить)\n"
         "• Так же нужно прийти до 00:00 так как после 00:00 сгорает депозит.\n"
         "Если эти пункты не будут соблюдены, то депозит не возвращается.\n\n"
         "Также будьте готовы пройти фейсконтроль, если по какой-то причине администратор входа считает что вы его не проходите, а предыдущие пункты соблюдены, то мы вернем вам депозит.\n\n"
-        "📸 После перевода отправьте фото или скриншот чека в этот чат."
+        "📸 <b>После перевода отправьте фото или скриншот чека в этот чат.</b>"
     )
     
-    # Удаляем фото плана зала и присылаем реквизиты и правила
+    # Удаляем фото плана зала
     await callback.message.delete()
-    await callback.message.answer(text)
+    
+    # Проверяем, существует ли файл с видео локально
+    if os.path.exists(video_path):
+        video = FSInputFile(video_path)
+        await callback.message.answer_video(video=video, caption=text)
+    else:
+        # Если файла нет, отправляем просто текстом (fallback)
+        await callback.message.answer(text)
     
     await state.set_state(BookingState.waiting_for_receipt)
     await callback.answer()
+
 
 @router.message(BookingState.waiting_for_receipt, F.photo)
 async def process_receipt_photo(message: Message, state: FSMContext, bot: Bot):
@@ -232,6 +292,7 @@ async def process_receipt_photo(message: Message, state: FSMContext, bot: Bot):
     date_str = data['selected_date']
     table_type = data['selected_table']
     table_name = TABLES[table_type]['name']
+    table_category = TABLES[table_type]['category']
     
     username = message.from_user.username or message.from_user.first_name
     
@@ -255,7 +316,7 @@ async def process_receipt_photo(message: Message, state: FSMContext, bot: Bot):
         f"🚨 <b>Новая бронь!</b>\n"
         f"👤 Клиент: @{username} (ID: <code>{message.from_user.id}</code>)\n"
         f"📅 Дата: <b>{date_str}</b>\n"
-        f"🪑 Стол: <b>{table_name}</b>\n"
+        f"🪑 Стол: <b>{table_name} ({table_category})</b>\n"
         f"🆔 ID заявки: {booking_id}"
     )
     
@@ -268,7 +329,7 @@ async def process_receipt_photo(message: Message, state: FSMContext, bot: Bot):
 
 @router.message(BookingState.waiting_for_receipt)
 async def process_receipt_invalid(message: Message):
-    await message.answer("Пожалуйста, отправьте именно **фотографию** (или скриншот) чека.")
+    await message.answer("Пожалуйста, отправьте именно <b>фотографию</b> (или скриншот) чека.")
 
 
 # ==================== ХЭНДЛЕРЫ МЕНЕДЖЕРА ====================
@@ -301,7 +362,7 @@ async def process_manager_action(callback: CallbackQuery, callback_data: Manager
         await callback.message.edit_caption(caption=new_caption, reply_markup=kb)
         
         try:
-            await bot.send_message(user_id, f"🎉 Ваша бронь на **Стол {table_id}** ({date_str}) успешно подтверждена! Ждем вас в нашем баре KVARTAL 29, по адресу Архангельск, Троицкий проспект, 122. По всем вопросам @waozixfu")
+            await bot.send_message(user_id, f"🎉 Ваша бронь на <b>Стол {table_id}</b> ({date_str}) успешно подтверждена! Ждем вас в нашем баре KVARTAL 29, по адресу Архангельск, Троицкий проспект, 122. По всем вопросам @waozixfu")
         except Exception as e:
             logging.error(f"Не удалось отправить сообщение клиенту {user_id}: {e}")
             
@@ -323,7 +384,7 @@ async def process_manager_action(callback: CallbackQuery, callback_data: Manager
         await callback.message.edit_caption(caption=new_caption, reply_markup=None)
         
         try:
-            await bot.send_message(user_id, f"⚠️ Ваша бронь на **Стол {table_id}** ({date_str}) была отменена менеджером. Если у вас есть вопросы, пожалуйста, свяжитесь с поддержкой @waozixfu.")
+            await bot.send_message(user_id, f"⚠️ Ваша бронь на <b>Стол {table_id}</b> ({date_str}) была отменена менеджером. Если у вас есть вопросы, пожалуйста, свяжитесь с поддержкой @waozixfu.")
         except Exception as e:
             logging.error(f"Не удалось отправить сообщение клиенту {user_id}: {e}")
 
